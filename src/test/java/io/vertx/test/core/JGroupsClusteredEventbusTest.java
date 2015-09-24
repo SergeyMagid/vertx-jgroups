@@ -38,7 +38,6 @@ public class JGroupsClusteredEventbusTest extends ClusteredEventBusTest {
         disableThreadChecks();
     }
 
-
     public static final String WRAPPED_CHANNEL = "wrapper-channel";
     private static final String ADDRESS1 = "some-address1";
 
@@ -58,7 +57,8 @@ public class JGroupsClusteredEventbusTest extends ClusteredEventBusTest {
         vertices[1].eventBus().consumer(WRAPPED_CHANNEL, wrapperEvent -> {
             EventBus ebSender = vertices[1].eventBus();
             ebSender.send(ADDRESS1, "foo" + (int) wrapperEvent.body(), reply -> {
-                assertEquals("ok0", reply.result().body().toString());
+                assertEquals("ok", reply.result().body().toString().substring(0, 2));
+                wrapperEvent.reply("ok");
             });
         });
 
@@ -68,7 +68,7 @@ public class JGroupsClusteredEventbusTest extends ClusteredEventBusTest {
 
             System.out.println(">> receive and reply in consumer before kill");
 
-            msg.reply("ok"+c);
+            msg.reply("ok" + c);
 
             if (c > 1) {
                 fail("too many messages");
@@ -97,7 +97,7 @@ public class JGroupsClusteredEventbusTest extends ClusteredEventBusTest {
 
             int c = cnt.getAndIncrement();
             assertEquals(msg.body(), "foo" + c);
-            msg.reply("ok"+c);
+            msg.reply("ok" + c);
 
             if (c == 0) {
                 fail("should not get first messages");
@@ -120,19 +120,23 @@ public class JGroupsClusteredEventbusTest extends ClusteredEventBusTest {
 
             try {
                 directCount.await();
-            } catch (InterruptedException e) {}
+            } catch (InterruptedException e) {
+            }
 
 
             vertices[1].runOnContext(v1 -> {
 
                 System.out.printf("Send request throw wrapper");
                 EventBus ebSender = vertices[1].eventBus();
-                ebSender.send(WRAPPED_CHANNEL, 1);
+                ebSender.send(WRAPPED_CHANNEL, 2, handler -> {
+                    if (handler.succeeded()) {
+                        complete();
+                    }
+                });
                 regLatch.countDown();
             });
 
         }));
-
 
         await();
     }
@@ -150,7 +154,7 @@ public class JGroupsClusteredEventbusTest extends ClusteredEventBusTest {
         int totalVert = numNodes + vertices.length;
         vertices = new Vertx[totalVert];
 
-        for (int i =0; i< currentVertices.length; i++) {
+        for (int i = 0; i < currentVertices.length; i++) {
             vertices[i] = currentVertices[i];
         }
 
@@ -174,20 +178,16 @@ public class JGroupsClusteredEventbusTest extends ClusteredEventBusTest {
         }
 
         System.out.println("Added new nodes count " + numNodes + ", total count " + vertices.length);
-
     }
 
-
-
     protected void kill(int pos) {
-        VertxInternal v = (VertxInternal)vertices[pos];
+        VertxInternal v = (VertxInternal) vertices[pos];
         v.executeBlocking(fut -> {
             v.simulateKill();
             fut.complete();
         }, ar -> {
             assertTrue(ar.succeeded());
         });
-
     }
 
     @Override
